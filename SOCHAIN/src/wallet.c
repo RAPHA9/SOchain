@@ -40,11 +40,7 @@ void wallet_send_transaction(struct transaction* tx, struct info_container* info
 }
 
 /* Função principal de uma Wallet.
- * Executa num ciclo infinito enquanto *info->terminate for 0. Em cada iteração:
- * - Tenta ler uma transação da Main cujo src_id seja igual ao wallet_id.
- * - Se a transação for válida, a assina e encaminha para os Servers.
- * - Se não houver transação (tx.id == -1), aguarda alguns milisegundos antes de tentar novamente.
- * Ao término, retorna o número de transações assinadas.
+ * Executa num ciclo infinito enquanto *info->terminate for 0.
  */
 int execute_wallet(int wallet_id, struct info_container* info, struct buffers* buffs) {
     int signed_count = 0;
