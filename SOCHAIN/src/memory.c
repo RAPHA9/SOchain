@@ -1,156 +1,181 @@
 #include "memory.h"
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <fcntl.h> 
-#include <sys/mman.h> 
-#include <string.h> 
+#include <sys/mman.h>
+#include <sys/stat.h>        /* For mode constants */
+#include <fcntl.h>
+#include <errno.h>
 
-
+/* Função que reserva uma zona de memória dinâmica, inicializando-a a 0 */
 void* allocate_dynamic_memory(int size) {
+    void *ptr = calloc(1, size);
+    if (!ptr) {
+        perror("calloc");
+        exit(EXIT_FAILURE);
+    }
+    return ptr;
+}
 
-    void* ptr = calloc(size, 1);
+/* Função que cria e mapeia uma zona de memória partilhada.
+ * Concatena o UID do utilizador ao nome para tornar único.
+ */
+void* create_shared_memory(char* name, int size) {
+    char shm_name[256];
+    snprintf(shm_name, sizeof(shm_name), "%s_%d", name, getuid());
     
-    if(ptr == NULL){
-        exit(1);
+    int shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
+    if (shm_fd < 0) {
+        perror("shm_open");
+        exit(EXIT_FAILURE);
     }
-    return ptr;
-}
-
-void* create_shared_memory(char* name, int size){
-    int ret;
-    uid_t user_id = getuid();
-    char memory_id[256]; 
-    //concatena o user_id com o name
-    snprintf(memory_id, sizeof(memory_id), "%s_%d", name, user_id);
-
-    //cria o identificador
-    int fd = shm_open(memory_id, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if (fd == -1){
-    perror("Erro ao criar a memória compartilhada");
-    exit(1);
+    
+    if (ftruncate(shm_fd, size) == -1) {
+        perror("ftruncate");
+        exit(EXIT_FAILURE);
     }
-    //define o tamanho da memória
-    ret = ftruncate(fd, size);
-    if (ret == -1){
-    perror("Erro ao definir o tamanho da memória compartilhada");
-     exit(2);
-    }
-    // mapeia a memória partilhada 
-    void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    
+    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (ptr == MAP_FAILED) {
-        perror("shm-mmap");
-        exit(3);
+        perror("mmap");
+        exit(EXIT_FAILURE);
     }
-    // preenche a zona de memória com o valor 0
+    
+    // A memória já é mapeada com ftruncate, mas podemos garantir que está a zero.
     memset(ptr, 0, size);
+    
     return ptr;
 }
 
-void deallocate_dynamic_memory(void* ptr){
+/* Liberta uma zona de memória dinâmica previamente alocada */
+void deallocate_dynamic_memory(void* ptr) {
     free(ptr);
 }
 
-void destroy_shared_memory(char* name, void* ptr, int size){
-    int ret;
-    ret = munmap(ptr, size);
-    if (ret == -1){
-        perror("Erro (munmap)");
-        exit(1);
-    }
-    uid_t user_id = getuid();
-    char memory_id[256]; 
-    //concatena o user_id com o name
-    snprintf(memory_id, sizeof(memory_id), "%s_%d", name, user_id);
-
-    ret = shm_unlink(memory_id);
-    if (ret == -1){
-        perror("Erro (shm_unlink)");
-        exit(2);
-       }
-    }
-
-void write_main_wallets_buffer(struct ra_buffer* buffer, int buffer_size, struct transaction* tx){
+/* Remove uma zona de memória partilhada previamente criada */
+void destroy_shared_memory(char* name, void* ptr, int size) {
+    char shm_name[256];
+    snprintf(shm_name, sizeof(shm_name), "%s_%d", name, getuid());
     
-    for(int i=0; i < buffer_size; i++){
-        if(buffer->ptrs[i] == 0){
-            buffer->buffer[i] = *tx;
-            //marca a posição como ocupada
-            buffer->ptrs[i]= 1;
-            return;
-        }
+    if (munmap(ptr, size) == -1) {
+        perror("munmap");
     }
-    // Se não houver nenhuma posição livre, não escreve nada e a transação é perdida
+    
+    if (shm_unlink(shm_name) == -1) {
+        perror("shm_unlink");
+    }
 }
 
-void write_wallets_servers_buffer(struct circ_buffer* buffer, int buffer_size, struct transaction* tx){
-    //verificar se o está cheio
-    if((buffer-> ptrs-> in+1) % buffer_size == buffer->ptrs->out){
+/* Função auxiliar para copiar uma transação */
+static void copy_transaction(struct transaction *dest, const struct transaction *src) {
+    dest->id = src->id;
+    dest->src_id = src->src_id;
+    dest->dest_id = src->dest_id;
+    dest->amount = src->amount;
+    dest->wallet_signature = src->wallet_signature;
+    dest->server_signature = src->server_signature;
+}
+
+/* Escreve uma transação no buffer RA (Main -> Wallets).
+ * Utiliza o int apontado por buffer->ptrs como índice de escrita.
+ */
+void write_main_wallets_buffer(struct ra_buffer* buffer, int buffer_size, struct transaction* tx) {
+    if (*(buffer->ptrs) < buffer_size) {
+        buffer->buffer[*(buffer->ptrs)] = *tx;
+        (*(buffer->ptrs))++;
+    } else {
+        
+        fprintf(stderr, "write_main_wallets_buffer: Buffer cheio. Transação %d perdida.\n", tx->id);
+    }
+}
+
+/* Escreve uma transação no buffer circular (Wallets -> Servers).
+ * Utiliza os índices 'in' e 'out' para controlar o buffer.
+ */
+void write_wallets_servers_buffer(struct circ_buffer* buffer, int buffer_size, struct transaction* tx) {
+    int next_in = (buffer->ptrs->in + 1) % buffer_size;
+    // Se o próximo índice for igual a out, o buffer está cheio
+    if (next_in == buffer->ptrs->out) {
+        fprintf(stderr, "write_wallets_servers_buffer: Buffer circular cheio. Transação %d perdida.\n", tx->id);
         return;
     }
-
-    //escreve a transação
-    buffer->buffer[buffer->ptrs->in] = * tx;
-
-    //atualiza o apontador de escrita
-    buffer-> ptrs-> in = (buffer->ptrs->in + 1) % buffer_size;
+    buffer->buffer[buffer->ptrs->in] = *tx;
+    buffer->ptrs->in = next_in;
 }
 
-void write_servers_main_buffer(struct ra_buffer* buffer, int buffer_size, struct transaction* tx){
-    for(int i=0; i < buffer_size; i++){
-        if(buffer->ptrs[i] == 0){
-            buffer->buffer[i] = *tx;
-            //marca a posição como ocupada
-            buffer->ptrs[i]= 1;
-            return;
+/* Escreve uma transação no buffer RA (Servers -> Main).
+ * Utiliza o int apontado por buffer->ptrs como índice de escrita.
+ */
+void write_servers_main_buffer(struct ra_buffer* buffer, int buffer_size, struct transaction* tx) {
+    if (*(buffer->ptrs) < buffer_size) {
+        buffer->buffer[*(buffer->ptrs)] = *tx;
+        (*(buffer->ptrs))++;
+    } else {
+        // Buffer cheio; transação perdida
+        fprintf(stderr, "write_servers_main_buffer: Buffer cheio. Transação %d perdida.\n", tx->id);
+    }
+}
+
+/* Lê uma transação do buffer RA (Main -> Wallets) para a carteira com id 'wallet_id'.
+ * Procura uma transação cuja origem (src_id) corresponda ao wallet_id.
+ * Se encontrada, copia a transação para 'tx' e remove-a do buffer (deslocando os restantes).
+ * Se não encontrar, define tx->id = -1.
+ */
+void read_main_wallets_buffer(struct ra_buffer* buffer, int wallet_id, int buffer_size, struct transaction* tx) {
+    int found = 0;
+    int count = *(buffer->ptrs);
+    for (int i = 0; i < count; i++) {
+        if (buffer->buffer[i].src_id == wallet_id) {
+            copy_transaction(tx, &buffer->buffer[i]);
+            found = 1;
+           
+            for (int j = i; j < count - 1; j++) {
+                buffer->buffer[j] = buffer->buffer[j+1];
+            }
+            (*(buffer->ptrs))--;
+            break;
         }
     }
-    // Se não houver nenhuma posição livre, não escreve nada e a transação é perdida
-}
-
-void read_main_wallets_buffer(struct ra_buffer* buffer, int wallet_id, int buffer_size, struct transaction* tx){
-    for(int i=0; i < buffer_size; i++){
-        if(buffer->ptrs[i] == 1 && buffer->buffer[i].dest_id == wallet_id){
-            //lê transação
-            *tx = buffer->buffer[i];
-            
-            //marca a posição como livre
-             buffer->ptrs[i]= 0;
-            return;
-        }
-    }
-    //Se não houver nenhuma transação disponível, afeta tx->id com o valor -1
-    tx->id = -1;
-}
-
-void read_wallets_servers_buffer(struct circ_buffer* buffer, int buffer_size, struct transaction* tx){
-    //verifica se está vazio
-    if(buffer-> ptrs-> in == buffer->ptrs->out){
-         //Se não houver nenhuma transação disponível, afeta tx->id com o valor -1
+    if (!found) {
         tx->id = -1;
-        return;
     }
-     //lê transação
-    *tx = buffer->buffer[buffer->ptrs->out];
-
-    //atualiza o apontador de leitura
-    buffer->ptrs->out = (buffer->ptrs->out + 1) % buffer_size;
-       
 }
 
-void read_servers_main_buffer(struct ra_buffer* buffer, int tx_id, int buffer_size, struct transaction* tx){
-   for(int i=0; i < buffer_size; i++){
-        if(buffer->ptrs[i] == 1 && buffer->buffer[i].id == tx_id){
-            //lê transação
-            *tx = buffer->buffer[i];
+/* Lê uma transação do buffer circular (Wallets -> Servers).
+ * Se o buffer não estiver vazio (in != out), copia a transação na posição 'out' e atualiza o índice.
+ * Caso contrário, define tx->id = -1.
+ */
+void read_wallets_servers_buffer(struct circ_buffer* buffer, int buffer_size, struct transaction* tx) {
+    if (buffer->ptrs->in == buffer->ptrs->out) {
+        // Buffer vazio
+        tx->id = -1;
+    } else {
+        copy_transaction(tx, &buffer->buffer[buffer->ptrs->out]);
+        buffer->ptrs->out = (buffer->ptrs->out + 1) % buffer_size;
+    }
+}
+
+/* Lê uma transação do buffer RA (Servers -> Main) identificada pelo tx_id.
+ * Procura a transação com o id igual a tx_id; se encontrada, copia para 'tx' e remove-a do buffer.
+ * Caso não seja encontrada, define tx->id = -1.
+ */
+void read_servers_main_buffer(struct ra_buffer* buffer, int tx_id, int buffer_size, struct transaction* tx) {
+    int found = 0;
+    int count = *(buffer->ptrs);
+    for (int i = 0; i < count; i++) {
+        if (buffer->buffer[i].id == tx_id) {
+            copy_transaction(tx, &buffer->buffer[i]);
+            found = 1;
             
-            //marca a posição como livre
-             buffer->ptrs[i]= 0;
-            return;
+            for (int j = i; j < count - 1; j++) {
+                buffer->buffer[j] = buffer->buffer[j+1];
+            }
+            (*(buffer->ptrs))--;
+            break;
         }
     }
-    //Se não houver nenhuma transação disponível, afeta tx->id com o valor -1
-    tx->id = -1;
+    if (!found) {
+        tx->id = -1;
+    }
 }
