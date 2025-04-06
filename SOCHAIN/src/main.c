@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "main.h"
+#include "memory.h"
 #include "process.h"
 
 /* Lê os argumentos da linha de comando e guarda-os na estrutura info_container.
@@ -50,19 +51,42 @@ void create_dynamic_memory_structs(struct info_container* info, struct buffers* 
  * Para cada zona partilhada, utiliza a função create_shared_memory.
  */
 void create_shared_memory_structs(struct info_container* info, struct buffers* buffs) {
+    // Aloca memória partilhada para os arrays de info_container
     info->balances = create_shared_memory("SHM_BALANCES", sizeof(float) * info->n_wallets);
     info->wallets_stats = create_shared_memory("SHM_WALLETS_STATS", sizeof(int) * info->n_wallets);
     info->servers_stats = create_shared_memory("SHM_SERVERS_STATS", sizeof(int) * info->n_servers);
     info->terminate = create_shared_memory("SHM_TERMINATE", sizeof(int));
+    
+    // Inicializa os saldos das wallets
     for (int i = 0; i < info->n_wallets; i++) {
-    	info->balances[i] = info->init_balance;
+        info->balances[i] = info->init_balance;
     }
-
     *(info->terminate) = 0;
-
-    buffs->buff_main_wallets = create_shared_memory("SHM_MAIN_WALLETS_BUFFER", sizeof(struct transaction) * info->buffers_size);
-    buffs->buff_wallets_servers = create_shared_memory("SHM_WALLETS_SERVERS_BUFFER", sizeof(struct transaction) * info->buffers_size);
-    buffs->buff_servers_main = create_shared_memory("SHM_SERVERS_MAIN_BUFFER", sizeof(struct transaction) * info->buffers_size);
+    
+    
+    buffs->buff_main_wallets = create_shared_memory("SHM_MAIN_WALLETS_BUFFER", sizeof(struct ra_buffer));
+   
+    ((struct ra_buffer*)buffs->buff_main_wallets)->ptrs = create_shared_memory("SHM_MAIN_WALLETS_PTRS", sizeof(int));
+    *(((struct ra_buffer*)buffs->buff_main_wallets)->ptrs) = 0;
+    
+    ((struct ra_buffer*)buffs->buff_main_wallets)->buffer = create_shared_memory("SHM_MAIN_WALLETS_ARRAY", sizeof(struct transaction) * info->buffers_size);
+    
+    
+    buffs->buff_wallets_servers = create_shared_memory("SHM_WALLETS_SERVERS_BUFFER", sizeof(struct circ_buffer));
+    // Aloca e inicializa os índices 'in' e 'out'
+    ((struct circ_buffer*)buffs->buff_wallets_servers)->ptrs = create_shared_memory("SHM_WALLETS_SERVERS_PTRS", sizeof(struct pointers));
+    ((struct circ_buffer*)buffs->buff_wallets_servers)->ptrs->in = 0;
+    ((struct circ_buffer*)buffs->buff_wallets_servers)->ptrs->out = 0;
+    
+    ((struct circ_buffer*)buffs->buff_wallets_servers)->buffer = create_shared_memory("SHM_WALLETS_SERVERS_ARRAY", sizeof(struct transaction) * info->buffers_size);
+    
+    
+    buffs->buff_servers_main = create_shared_memory("SHM_SERVERS_MAIN_BUFFER", sizeof(struct ra_buffer));
+   
+    ((struct ra_buffer*)buffs->buff_servers_main)->ptrs = create_shared_memory("SHM_SERVERS_MAIN_PTRS", sizeof(int));
+    *(((struct ra_buffer*)buffs->buff_servers_main)->ptrs) = 0;
+    
+    ((struct ra_buffer*)buffs->buff_servers_main)->buffer = create_shared_memory("SHM_SERVERS_MAIN_ARRAY", sizeof(struct transaction) * info->buffers_size);
 }
 
 /* Liberta a memória dinâmica previamente alocada. */
@@ -80,26 +104,37 @@ void destroy_dynamic_memory_structs(struct info_container* info, struct buffers*
     deallocate_dynamic_memory(buffs);
 }
 
-/* Remove a memória partilhada previamente alocada. */
 void destroy_shared_memory_structs(struct info_container* info, struct buffers* buffs) {
     destroy_shared_memory("SHM_BALANCES", info->balances, sizeof(float) * info->n_wallets);
     destroy_shared_memory("SHM_WALLETS_STATS", info->wallets_stats, sizeof(int) * info->n_wallets);
     destroy_shared_memory("SHM_SERVERS_STATS", info->servers_stats, sizeof(int) * info->n_servers);
     destroy_shared_memory("SHM_TERMINATE", info->terminate, sizeof(int));
-    destroy_shared_memory("SHM_MAIN_WALLETS_BUFFER", buffs->buff_main_wallets, sizeof(struct transaction) * info->buffers_size);
-    destroy_shared_memory("SHM_WALLETS_SERVERS_BUFFER", buffs->buff_wallets_servers, sizeof(struct transaction) * info->buffers_size);
-    destroy_shared_memory("SHM_SERVERS_MAIN_BUFFER", buffs->buff_servers_main, sizeof(struct transaction) * info->buffers_size);
+    
+    // Para o buffer RA Main -> Wallets
+    destroy_shared_memory("SHM_MAIN_WALLETS_ARRAY", ((struct ra_buffer*)buffs->buff_main_wallets)->buffer, sizeof(struct transaction) * info->buffers_size);
+    destroy_shared_memory("SHM_MAIN_WALLETS_PTRS", ((struct ra_buffer*)buffs->buff_main_wallets)->ptrs, sizeof(int));
+    destroy_shared_memory("SHM_MAIN_WALLETS_BUFFER", buffs->buff_main_wallets, sizeof(struct ra_buffer));
+    
+    // Para o buffer circular Wallets -> Servers
+    destroy_shared_memory("SHM_WALLETS_SERVERS_ARRAY", ((struct circ_buffer*)buffs->buff_wallets_servers)->buffer, sizeof(struct transaction) * info->buffers_size);
+    destroy_shared_memory("SHM_WALLETS_SERVERS_PTRS", ((struct circ_buffer*)buffs->buff_wallets_servers)->ptrs, sizeof(struct pointers));
+    destroy_shared_memory("SHM_WALLETS_SERVERS_BUFFER", buffs->buff_wallets_servers, sizeof(struct circ_buffer));
+    
+    // Para o buffer RA Servers -> Main
+    destroy_shared_memory("SHM_SERVERS_MAIN_ARRAY", ((struct ra_buffer*)buffs->buff_servers_main)->buffer, sizeof(struct transaction) * info->buffers_size);
+    destroy_shared_memory("SHM_SERVERS_MAIN_PTRS", ((struct ra_buffer*)buffs->buff_servers_main)->ptrs, sizeof(int));
+    destroy_shared_memory("SHM_SERVERS_MAIN_BUFFER", buffs->buff_servers_main, sizeof(struct ra_buffer));
 }
 
 /* Cria os processos para as carteiras e servidores.
  * Os PIDs resultantes são armazenados nos arrays da estrutura info_container.
  */
 void create_processes(struct info_container* info, struct buffers* buffs) {
-    // Lançar processos Wallet
+   
     for (int i = 0; i < info->n_wallets; i++) {
         info->wallets_pids[i] = launch_wallet(i, info, buffs);
     }
-    // Lançar processos Server
+    
     for (int i = 0; i < info->n_servers; i++) {
         info->servers_pids[i] = launch_server(i, info, buffs);
     }
