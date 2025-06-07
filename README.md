@@ -1,39 +1,31 @@
 # SOchain
 
-**SOchain** é um sistema distribuído simulado que representa uma rede simples de blockchain entre carteiras (wallets), servidores e uma aplicação principal (main). Os processos comunicam entre si através de buffers em memória partilhada, simulando transações, assinaturas e validações.
+**SOchain** is a simulated distributed system that represents a simple blockchain network among wallets, servers, and a main application (main). The processes communicate with each other through shared memory buffers, simulating transactions, signatures, and validations.
 
 ## 📁 Estrutura do Projeto
-SOchain/ ├── bin/ # Diretório onde o executável final será colocado ├── inc/ # Ficheiros de cabeçalho (.h) ├── obj/ # Objetos compilados (.o) ├── src/ # Código-fonte (.c) ├── makefile # Ficheiro de compilação └── README.md # Este ficheiro
+SOchain/ ├── bin/  ├── inc/ (.h) ├── obj/ (.o) ├── src/ # Código-fonte (.c) ├── makefile └── README.md 
 
 ------------------------------------------------
 
-## 🔧 Compilação
-
-Para compilar o projeto, basta correr o seguinte comando no terminal, na raiz do projeto:
+## 🔧 
 
 make
 
-Para limpar os ficheiros compilados (objetos e binários), corra:
 
 make clean
 
 -------------------------------------------
 
-Após a compilação, corre o programa com:
-
 ./bin/sochain
 
 -----------------------------------------------
 
-🧠 Dependências
-Este projeto usa:
+🧠 Dependencies
 
-- gcc como compilador
+- gcc 
 
 - POSIX shared memory (shm_open, mmap, shm_unlink)
 
 - POSIX threads (pthread)
 
-- Biblioteca librt para suporte a temporização e memória partilhada
-
-O sistema operativo usado foi o Windows11 com WSL que é compatível com estas bibliotecas (Ubuntu recomendado).
+The operating system used was Windows 11 with WSL, which is compatible with these libraries (Ubuntu recommended).
