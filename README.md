@@ -1,41 +1,43 @@
-# SOchain
+SOchain
+SOchain is a simulated distributed system that represents a simple blockchain network among wallets, servers, and a main application (main). The processes communicate with each other through shared memory buffers, simulating transactions, signatures, and validations.
 
-**SOchain** é um sistema distribuído simulado que representa uma rede simples de blockchain entre carteiras (wallets), servidores e uma aplicação principal (main). Os processos comunicam entre si através de buffers em memória partilhada, simulando transações, assinaturas e validações.
+📁 Project Structure
+SOchain/
+├── bin/ # Directory where the final executable will be placed
+├── inc/ # Header files (.h)
+├── obj/ # Compiled object files (.o)
+├── src/ # Source code (.c)
+├── makefile # Build file
+└── README.md # This file
 
-## 📁 Estrutura do Projeto
-SOchain/ ├── bin/ # Diretório onde o executável final será colocado ├── inc/ # Ficheiros de cabeçalho (.h) ├── obj/ # Objetos compilados (.o) ├── src/ # Código-fonte (.c) ├── makefile # Ficheiro de compilação └── README.md # Este ficheiro
+🔧 Compilation
+To compile the project, simply run the following command in the terminal at the project root:
 
-------------------------------------------------
-
-## 🔧 Compilação
-
-Para compilar o projeto, basta correr o seguinte comando no terminal, na raiz do projeto:
-
+bash
+Copiar
+Editar
 make
+To clean compiled files (objects and binaries), run:
 
-Para limpar os ficheiros compilados (objetos e binários), corra:
-
+bash
+Copiar
+Editar
 make clean
+After compilation, run the program with:
 
--------------------------------------------
-
-Após a compilação, corre o programa com:
-
+bash
+Copiar
+Editar
 ./bin/sochain
+🧠 Dependencies
+This project uses:
 
------------------------------------------------
+gcc as the compiler
 
-🧠 Dependências
-Este projeto usa:
+POSIX shared memory (shm_open, mmap, shm_unlink)
 
-- gcc como compilador
+POSIX threads (pthread)
 
-- POSIX shared memory (shm_open, mmap, shm_unlink)
+librt library for timing and shared memory support
 
-- POSIX threads (pthread)
-
-- Biblioteca librt para suporte a temporização e memória partilhada
-
-O sistema operativo usado foi o Windows11 com WSL que é compatível com estas bibliotecas (Ubuntu recomendado).
-
-
+The operating system used was Windows 11 with WSL, which is compatible with these libraries (Ubuntu recommended).
