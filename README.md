@@ -1,43 +1,39 @@
-SOchain
-SOchain is a simulated distributed system that represents a simple blockchain network among wallets, servers, and a main application (main). The processes communicate with each other through shared memory buffers, simulating transactions, signatures, and validations.
+# SOchain
 
-📁 Project Structure
-SOchain/
-├── bin/ # Directory where the final executable will be placed
-├── inc/ # Header files (.h)
-├── obj/ # Compiled object files (.o)
-├── src/ # Source code (.c)
-├── makefile # Build file
-└── README.md # This file
+**SOchain** é um sistema distribuído simulado que representa uma rede simples de blockchain entre carteiras (wallets), servidores e uma aplicação principal (main). Os processos comunicam entre si através de buffers em memória partilhada, simulando transações, assinaturas e validações.
 
-🔧 Compilation
-To compile the project, simply run the following command in the terminal at the project root:
+## 📁 Estrutura do Projeto
+SOchain/ ├── bin/ # Diretório onde o executável final será colocado ├── inc/ # Ficheiros de cabeçalho (.h) ├── obj/ # Objetos compilados (.o) ├── src/ # Código-fonte (.c) ├── makefile # Ficheiro de compilação └── README.md # Este ficheiro
 
-bash
-Copiar
-Editar
+------------------------------------------------
+
+## 🔧 Compilação
+
+Para compilar o projeto, basta correr o seguinte comando no terminal, na raiz do projeto:
+
 make
-To clean compiled files (objects and binaries), run:
 
-bash
-Copiar
-Editar
+Para limpar os ficheiros compilados (objetos e binários), corra:
+
 make clean
-After compilation, run the program with:
 
-bash
-Copiar
-Editar
+-------------------------------------------
+
+Após a compilação, corre o programa com:
+
 ./bin/sochain
-🧠 Dependencies
-This project uses:
 
-gcc as the compiler
+-----------------------------------------------
 
-POSIX shared memory (shm_open, mmap, shm_unlink)
+🧠 Dependências
+Este projeto usa:
 
-POSIX threads (pthread)
+- gcc como compilador
 
-librt library for timing and shared memory support
+- POSIX shared memory (shm_open, mmap, shm_unlink)
 
-The operating system used was Windows 11 with WSL, which is compatible with these libraries (Ubuntu recommended).
+- POSIX threads (pthread)
+
+- Biblioteca librt para suporte a temporização e memória partilhada
+
+O sistema operativo usado foi o Windows11 com WSL que é compatível com estas bibliotecas (Ubuntu recomendado).
